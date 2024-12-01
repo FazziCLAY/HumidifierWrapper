@@ -1,5 +1,8 @@
+// для описания проекта читайте README файл.
+
+
 #include <LiquidCrystal.h>
-#include <EncButton.h>
+//#include <EncButton.h>
 #include "DataArray.h"
 
 
@@ -19,14 +22,14 @@
 #define ENCODER_S2 3
 #define ENCODER_KEY 4
 
-#define WATER_MIN 370
-#define DEFAULT_HUM_MODE 1
-#define DEFAULT_HUM_LED_MODE 0
+#define WATER_MIN -1 // TODO: игнорируем показания датчика воды т.к. его съели (законы физики, металл под напряжением в воде из под крана, ммммм)
+#define DEFAULT_HUM_MODE 1 // т.е. 100% включен
+#define DEFAULT_HUM_LED_MODE 0 // т.е. выключить подсветку.
 // ========= SETTINGS =========
 
 
 LiquidCrystal lcd(DISPLAY_RS, DISPLAY_EN, DISPLAY_D4, DISPLAY_D5, DISPLAY_D6, DISPLAY_D7);
-EncButton enc(ENCODER_S1, ENCODER_S2, ENCODER_KEY);
+//EncButton enc(ENCODER_S1, ENCODER_S2, ENCODER_KEY);
 DataArray waterSensor(30);
 
 // 0 - off
@@ -63,8 +66,8 @@ void setup() {
   pinMode(A6, INPUT); // water sensor
   pinMode(A3, OUTPUT); // button
 
-  enc.init(INPUT_PULLUP, INPUT_PULLUP, LOW);
-  enc.setEncType(EB_STEP4_LOW);
+  //  enc.init(INPUT_PULLUP, INPUT_PULLUP, LOW);
+  //  enc.setEncType(EB_STEP4_LOW);
   lcd.begin(DISPLAY_WIDTH, DISPLAY_HEIGHT);
 }
 
@@ -136,20 +139,30 @@ int getWaterSensor() {
 static boolean updateForNoSleep = false;
 
 void loop() {
-  enc.tick();
+  //  enc.tick();
   waterSensor.put(analogRead(A6));
   loopPostPressButton();
 
+  // пояснение этого куска кода:
+  // прошивка самого увлажнителя выключает его (по моим наблюдениям после 1 часа работы)
+  // чтобы заставить его работаь 24/7 за 5 минут до конца "цикла" мы сами его выключаем на r время и следом он включится заного на l время. (ms) 
   static uint32_t tmr = 0;
-  static bool stateOfHumidifier = true;
   uint32_t tmrTime = (uint32_t)millis() - (uint32_t)tmr;
-  static uint32_t l = (uint32_t)1000 * (uint32_t)60 * (uint32_t)60;
-  if (isWater() && (tmrTime >= l)) {
+  static bool flag1 = false;
+  static uint32_t l = (uint32_t)55 * (uint32_t)1000 * (uint32_t)60; // 55 минут находимся во включенном состоянии
+  static uint32_t r = (uint32_t)10 * (uint32_t)1000; // 10 секунд находимся в выключенном состоянии
+  if (isWater() && (tmrTime >= (flag1 ? 10 * 1000 : l))) {
     if (!isGoals()) {
-      humidifierStateGoal = stateOfHumidifier ? DEFAULT_HUM_MODE : 0;
-      humidifierLedStateGoal = DEFAULT_HUM_LED_MODE;
+      if (!flag1) {
+        humidifierStateGoal = 0;
+        humidifierLedStateGoal = 0;
+      } else {
+        humidifierStateGoal = DEFAULT_HUM_MODE;
+        humidifierLedStateGoal = DEFAULT_HUM_LED_MODE;
+      }
+
       tmr = millis();
-      stateOfHumidifier = !stateOfHumidifier;
+      flag1 = !flag1;
     }
   }
 
@@ -158,13 +171,13 @@ void loop() {
   }
 
   if (isNoWater()) {
-      static uint32_t tmrLedBlink = millis();
-      static bool b = false;
-      if (millis() - tmrLedBlink > 500) {
-        digitalWrite(DISPLAY_LED, b);
-        tmrLedBlink = millis();
-        b = !b;
-      }   
+    static uint32_t tmrLedBlink = millis();
+    static bool b = false;
+    if (millis() - tmrLedBlink > 500) {
+      digitalWrite(DISPLAY_LED, b);
+      tmrLedBlink = millis();
+      b = !b;
+    }
   } else {
     digitalWrite(DISPLAY_LED, false);
   }
@@ -209,7 +222,7 @@ void loop() {
   lcd.print(humidifierLedStateGoal);
 
 
-  int i = min(max(0, getWaterSensor() - 300), 230)*4; // [0; 240] USSR
+  int i = min(max(0, getWaterSensor() - 300), 230) * 4; // [0; 240] USSR
   //Serial.println(i);
 
   lcd.setCursor(5, 0);
